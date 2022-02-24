@@ -1,13 +1,13 @@
 package com.github.tobi406.aliasr;
 
 import com.moandjiezana.toml.Toml;
-import com.velocitypowered.api.command.Command;
 import com.velocitypowered.api.command.CommandManager;
+import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.command.CommandSource;
+import com.velocitypowered.api.command.SimpleCommand;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 
-import org.checkerframework.checker.nullness.qual.NonNull;
 import org.slf4j.Logger;
 
 import javax.inject.Inject;
@@ -23,11 +23,13 @@ import java.util.List;
 @Plugin(
         id = "aliasr",
         name = "Aliasr",
-        version = "1.0-BETA",
+        version = "1.1-BETA",
         description = "Simple Alias manager using RegEx",
-        authors = { "Tobi406" }
+        authors = { "Tobi406", "pjv99" }
 )
-public class AliasrPlugin {
+
+public class AliasrPlugin 
+{
     private static AliasrPlugin instance;
 
     private CommandManager commandManager;
@@ -39,7 +41,8 @@ public class AliasrPlugin {
     List<String> registeredCommands = new ArrayList<>();
 
     @Inject
-    public AliasrPlugin(CommandManager commandManager, Logger logger, @DataDirectory final Path folder) {
+    public AliasrPlugin(CommandManager commandManager, Logger logger, @DataDirectory final Path folder)
+    {
         this.commandManager = commandManager;
         this.logger = logger;
         this.folder = folder;
@@ -48,28 +51,39 @@ public class AliasrPlugin {
 
         this.registerCommands();
 
-
         instance = this;
     }
-    public static AliasrPlugin getInstance() {
+
+    public static AliasrPlugin getInstance()
+    {
         return instance;
     }
 
-    private Toml loadConfig(Path path) {
+    private Toml loadConfig(Path path)
+    {
         File folder =  path.toFile();
         File file = new File(folder, "config.toml");
-        if (!file.getParentFile().exists()) {
+
+        if (!file.getParentFile().exists())
+        {
             file.getParentFile().mkdirs();
         }
 
-        if (!file.exists()) {
-            try (InputStream input = getClass().getResourceAsStream("/" + file.getName())) {
-                if (input != null) {
+        if (!file.exists())
+        {
+            try (InputStream input = getClass().getResourceAsStream("/" + file.getName()))
+            {
+                if (input != null)
+                {
                     Files.copy(input, file.toPath());
-                } else {
+                }
+                else
+                {
                     file.createNewFile();
                 }
-            } catch (IOException exception) {
+            }
+            catch (IOException exception)
+            {
                 exception.printStackTrace();
                 return null;
             }
@@ -78,7 +92,8 @@ public class AliasrPlugin {
         return new Toml().read(file);
     }
 
-    public void reload() {
+    public void reload()
+    {
         this.config = this.loadConfig(this.folder);
 
         this.unregisterCommands();
@@ -86,32 +101,46 @@ public class AliasrPlugin {
     }
 
     public void registerCommands() {
-        this.commandManager.register(new AliasrCommand(), "aliasr");
-        this.registeredCommands.add("aliasr");
+        // Aliasr Reload command
+        CommandMeta aliasrMeta = this.commandManager.metaBuilder("aliasr").build();
+        this.commandManager.register(aliasrMeta, new AliasrCommand());
         this.logger.info("Registered plugin command \"aliasr\"");
 
+        // Aliased commands
         List<HashMap<String, String>> aliases = this.config.getList("aliases");
-        aliases.forEach(hashMap -> {
-            this.commandManager.register(new Command() {
+
+        aliases.forEach(hashMap ->
+        {
+            CommandMeta meta = this.commandManager.metaBuilder(hashMap.get("name")).build();
+
+            this.commandManager.register(meta, new SimpleCommand()
+            {
                 private String args = hashMap.get("args");
                 private String command = hashMap.get("command");
                 private String commandArgs = hashMap.get("commandArgs");
 
                 @Override
-                public void execute(@NonNull CommandSource source, @NonNull String[] args) {
+                public void execute(final Invocation invocation)
+                {
+                    CommandSource source = invocation.source();
+                    String[] args = invocation.arguments();
                     String joinedArgs = String.join(" ", args);
 
-                    AliasrPlugin.getInstance().commandManager.execute(source,
-                            this.command + (args.length > 0 ? (" " +
-                                    joinedArgs.replaceAll(this.args, this.commandArgs)) : "")
-                    );
+                    AliasrPlugin.getInstance().commandManager.executeAsync(source, this.command + (args.length > 0 ? (" " + joinedArgs.replaceAll(this.args, this.commandArgs)) : ""));
                 }
-            }, hashMap.get("name"));
-            this.registeredCommands.add(hashMap.get("name"));
-            this.logger.info("Registered alias command \"" + hashMap.get("name") + "\"");
+
+                @Override
+                public boolean hasPermission(final Invocation invocation)
+                {
+                    // This can always be true due to the fact that this passes off permission responsibility to the aliased command being ran
+                    return true;
+                }
+            });
         });
     }
-    public void unregisterCommands() {
+
+    public void unregisterCommands()
+    {
         this.registeredCommands.forEach(this.commandManager::unregister);
     }
 }
